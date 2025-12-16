@@ -1,0 +1,15 @@
+-- Use SERIALIZABLE to ensure atomic drop + waitlist enrollment
+BEGIN TRANSACTION;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+-- Mark enrollment as dropped
+UPDATE Enrollment
+SET status = 'dropped'
+WHERE student_id = 12345 AND course_id = 'CS101' AND status = 'active';
+
+-- Triggers will:
+-- 1. Decrease current_enrollment
+-- 2. Auto-enroll next waitlisted student
+-- 3. Log the action
+
+COMMIT;
