@@ -1,0 +1,7 @@
+| Operation              | Isolation Level                    | Reasoning                                    |
+|------------------------|------------------------------------|----------------------------------------------|
+| Course Enrollment      | SERIALIZABLE                       | Last seat race condition                     |
+| Drop Course            | SERIALIZABLE                       | Atomic drop + waitlist promotion             |
+| Batch Enrollment       | READ COMMITTED                     | Independent operations, better concurrency   |
+| Waitlist Management    | SERIALIZABLE                       | Position integrity critical                  |
+| Reports/Statistics     | REPEATABLE READ + READ ONLY        | Consistent snapshot, no blocking             |
