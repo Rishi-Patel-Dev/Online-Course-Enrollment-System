@@ -1,0 +1,14 @@
+-- Use READ COMMITTED for better concurrency
+BEGIN TRANSACTION;
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- Process multiple enrollments for one student
+INSERT INTO Enrollment (student_id, course_id, status)
+VALUES 
+    (12345, 'CS101', 'active'),
+    (12345, 'MATH200', 'active'),
+    (12345, 'PHYS150', 'active');
+
+-- Each insert triggers prerequisite checks and count updates independently
+
+COMMIT;
