@@ -1,0 +1,18 @@
+-- Use SERIALIZABLE to maintain position integrity
+BEGIN TRANSACTION;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+-- When removing a student from middle of waitlist
+DELETE FROM Waitlist
+WHERE student_id = 12345 AND course_id = 'CS101';
+
+-- Update all positions after the deleted student
+UPDATE Waitlist
+SET position = position - 1
+WHERE course_id = 'CS101'
+AND position > (
+    SELECT position FROM Waitlist 
+    WHERE student_id = 12345 AND course_id = 'CS101'
+);
+
+COMMIT;
