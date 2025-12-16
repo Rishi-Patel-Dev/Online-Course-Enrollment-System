@@ -1,0 +1,133 @@
+-- Trigger 1: Check prerequisites before enrollment
+CREATE FUNCTION check_prerequisites()
+RETURNS TRIGGER AS $$
+DECLARE
+    missing_prereqs INT;
+BEGIN
+    SELECT COUNT(*) INTO missing_prereqs
+    FROM Prerequisite P
+    WHERE P.course_id = NEW.course_id
+    AND P.prereq_course_id NOT IN (
+        SELECT E.course_id
+        FROM Enrollment E
+        WHERE E.student_id = NEW.student_id
+        AND E.status = 'completed'
+        AND E.grade IN ('A', 'B', 'C', 'D')
+    );
+    
+    IF missing_prereqs > 0 THEN
+        RAISE EXCEPTION 'Student % has not completed all prerequisites for course %',
+            NEW.student_id, NEW.course_id;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER enforce_prerequisites
+BEFORE INSERT ON Enrollment
+FOR EACH ROW EXECUTE FUNCTION check_prerequisites();
+
+-- Trigger 2: Update enrollment count when student enrolls
+CREATE FUNCTION update_enrollment_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'active' THEN
+        UPDATE Course
+        SET current_enrollment = current_enrollment + 1
+        WHERE course_id = NEW.course_id;
+        
+        -- Check if this exceeds capacity
+        IF (SELECT current_enrollment FROM Course WHERE course_id = NEW.course_id) 
+           > (SELECT max_capacity FROM Course WHERE course_id = NEW.course_id) THEN
+            RAISE EXCEPTION 'Course % is at full capacity', NEW.course_id;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_count_on_enroll
+AFTER INSERT ON Enrollment
+FOR EACH ROW EXECUTE FUNCTION update_enrollment_count();
+
+-- Trigger 3: Update enrollment count when student drops
+CREATE FUNCTION handle_drop()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status = 'active' AND NEW.status = 'dropped' THEN
+        UPDATE Course
+        SET current_enrollment = current_enrollment - 1
+        WHERE course_id = NEW.course_id;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_count_on_drop
+AFTER UPDATE ON Enrollment
+FOR EACH ROW EXECUTE FUNCTION handle_drop();
+
+-- Trigger 4: Auto-enroll from waitlist when seat opens
+CREATE FUNCTION auto_enroll_from_waitlist()
+RETURNS TRIGGER AS $$
+DECLARE
+    next_student_id INT;
+    next_course_id VARCHAR(10);
+BEGIN
+    -- Only if a student dropped (enrollment decreased)
+    IF NEW.current_enrollment < OLD.current_enrollment THEN
+        -- Get first student on waitlist
+        SELECT student_id, course_id INTO next_student_id, next_course_id
+        FROM Waitlist
+        WHERE course_id = NEW.course_id
+        ORDER BY position
+        LIMIT 1;
+        
+        IF next_student_id IS NOT NULL THEN
+            -- Enroll the student
+            INSERT INTO Enrollment (student_id, course_id, status)
+            VALUES (next_student_id, next_course_id, 'active');
+            
+            -- Remove from waitlist
+            DELETE FROM Waitlist
+            WHERE student_id = next_student_id 
+            AND course_id = next_course_id;
+            
+            -- Update positions for remaining students
+            UPDATE Waitlist
+            SET position = position - 1
+            WHERE course_id = next_course_id
+            AND position > (SELECT position FROM Waitlist 
+                           WHERE student_id = next_student_id);
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER enroll_from_waitlist
+AFTER UPDATE ON Course
+FOR EACH ROW EXECUTE FUNCTION auto_enroll_from_waitlist();
+
+-- Trigger 5: Log all enrollment actions
+CREATE FUNCTION log_enrollment_action()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO Enrollment_History (student_id, course_id, action)
+        VALUES (NEW.student_id, NEW.course_id, 'enrolled');
+    ELSIF TG_OP = 'UPDATE' AND NEW.status = 'dropped' THEN
+        INSERT INTO Enrollment_History (student_id, course_id, action)
+        VALUES (NEW.student_id, NEW.course_id, 'dropped');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER log_enrollments
+AFTER INSERT OR UPDATE ON Enrollment
+FOR EACH ROW EXECUTE FUNCTION log_enrollment_action();
