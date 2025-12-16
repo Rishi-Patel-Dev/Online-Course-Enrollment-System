@@ -1,0 +1,73 @@
+-- Students table
+CREATE TABLE Student (
+    student_id INT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    year INT CHECK (year BETWEEN 1 AND 4),
+    major VARCHAR(50)
+);
+
+-- Courses table
+CREATE TABLE Course (
+    course_id VARCHAR(10) PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    credits INT CHECK (credits > 0),
+    max_capacity INT NOT NULL CHECK (max_capacity > 0),
+    current_enrollment INT DEFAULT 0 CHECK (current_enrollment >= 0),
+    semester VARCHAR(20) NOT NULL,
+    CONSTRAINT capacity_check CHECK (current_enrollment <= max_capacity)
+);
+
+-- Prerequisites (self-referencing relationship)
+CREATE TABLE Prerequisite (
+    course_id VARCHAR(10),
+    prereq_course_id VARCHAR(10),
+    PRIMARY KEY (course_id, prereq_course_id),
+    FOREIGN KEY (course_id) REFERENCES Course(course_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (prereq_course_id) REFERENCES Course(course_id)
+        ON DELETE RESTRICT,
+    CONSTRAINT no_self_prereq CHECK (course_id != prereq_course_id)
+);
+
+-- Enrollments table
+CREATE TABLE Enrollment (
+    enrollment_id SERIAL PRIMARY KEY,
+    student_id INT NOT NULL,
+    course_id VARCHAR(10) NOT NULL,
+    enrollment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'active' 
+        CHECK (status IN ('active', 'dropped', 'completed')),
+    grade VARCHAR(2),
+    FOREIGN KEY (student_id) REFERENCES Student(student_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES Course(course_id)
+        ON DELETE RESTRICT,
+    UNIQUE (student_id, course_id, status),
+    CONSTRAINT valid_grade CHECK (grade IN ('A', 'B', 'C', 'D', 'F', 'W') OR grade IS NULL)
+);
+
+-- Waitlist table
+CREATE TABLE Waitlist (
+    waitlist_id SERIAL PRIMARY KEY,
+    student_id INT NOT NULL,
+    course_id VARCHAR(10) NOT NULL,
+    join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    position INT NOT NULL CHECK (position > 0),
+    FOREIGN KEY (student_id) REFERENCES Student(student_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES Course(course_id)
+        ON DELETE CASCADE,
+    UNIQUE (student_id, course_id),
+    UNIQUE (course_id, position)
+);
+
+-- Enrollment history for auditing
+CREATE TABLE Enrollment_History (
+    history_id SERIAL PRIMARY KEY,
+    student_id INT NOT NULL,
+    course_id VARCHAR(10) NOT NULL,
+    action VARCHAR(20) NOT NULL CHECK (action IN ('enrolled', 'dropped', 'waitlisted')),
+    action_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
