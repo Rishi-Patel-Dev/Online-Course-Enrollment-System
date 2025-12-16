@@ -1,0 +1,13 @@
+-- Use READ COMMITTED or REPEATABLE READ for reports
+BEGIN TRANSACTION;
+SET TRANSACTION READ ONLY;
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+
+-- Generate enrollment statistics
+SELECT * FROM Course_Availability
+WHERE department = 'CS';
+
+SELECT * FROM Waitlist_Status
+WHERE course_id LIKE 'CS%';
+
+COMMIT;
