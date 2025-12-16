@@ -1,0 +1,18 @@
+-- Use SERIALIZABLE to prevent race conditions on last seat
+BEGIN TRANSACTION;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+
+-- Lock the course row to check capacity
+SELECT current_enrollment, max_capacity
+FROM Course
+WHERE course_id = 'CS101'
+FOR UPDATE;
+
+-- If seats available, enroll (trigger will update count)
+INSERT INTO Enrollment (student_id, course_id, status)
+VALUES (12345, 'CS101', 'active');
+
+-- If no seats, add to waitlist
+-- (This would be in exception handler or conditional logic)
+
+COMMIT;
